@@ -20,6 +20,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 #define DEFAULT_OAICOMPAT_MODEL "gpt-3.5-turbo-0613"
 
@@ -630,4 +631,24 @@ static json format_error_response(const std::string & message, const enum error_
         {"message", message},
         {"type", type_str},
     };
+}
+
+static void from_json(const json& j, llama_control_vector_load_info& l) {
+    j.at("scale").get_to(l.strength);
+    j.at("path").get_to(l.fname);
+}
+
+static nlohmann::json getGGUFFilenames(const std::string& directoryPath) {
+    nlohmann::json filenames = nlohmann::json::array();
+
+    for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
+        if (entry.is_regular_file()) {
+            const std::string filename = entry.path().filename().string();
+            if (filename.size() >= 5 && filename.substr(filename.size() - 5) == ".gguf") {
+                filenames.push_back(filename);
+            }
+        }
+    }
+
+    return filenames;
 }

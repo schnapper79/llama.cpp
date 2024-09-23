@@ -1520,6 +1520,14 @@ gpt_params_context gpt_params_parser_init(gpt_params & params, llama_example ex,
         }
     ));
     add_opt(llama_arg(
+        {"--control-vector-directory"}, "PATH",
+         "add a directory where the server will look for *.gguf files. These files are not loaded automatically.\nnote: this argument can be repeated to add multiple directories.",
+        [](gpt_params & params, const std::string & path) {
+            params.control_vector_directories.push_back(path);
+        }
+         
+    ));
+    add_opt(llama_arg(
         {"--control-vector-layer-range"}, "START", "END",
         "layer range to apply the control vector(s) to, start and end inclusive",
         [](gpt_params & params, const std::string & start, const std::string & end) {

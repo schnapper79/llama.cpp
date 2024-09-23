@@ -2993,6 +2993,96 @@ int main(int argc, char ** argv) {
             : responses[0];
         res_ok(res, root);
     };
+ 
+    const auto handle_cv_list=[&](const httplib::Request &, httplib::Response & res) {
+        json result=json::array();
+        for ( auto cv : ctx_server.params.control_vectors){
+            result.push_back({
+                {"path",cv.fname},
+                {"scale",cv.strength}
+            });
+        }
+        res_ok(res, result);
+        res.status = 200; // HTTP OK
+    };    
+
+    const auto handle_cv_list_apply=[&ctx_server, &params, &res_error, &handle_cv_list](const httplib::Request & req, httplib::Response & res) {
+        json data = json::parse(req.body);
+
+        // vector parameters passed by user
+        std::vector<llama_control_vector_load_info> vec_params;
+
+        if (data.contains("vectors") && data["vectors"].is_array()) {
+
+            for (const auto &item : data["vectors"]) {
+                llama_control_vector_load_info v = item.get<llama_control_vector_load_info>();
+                std::cout << "Add vector: " << v.fname  << " " << v.strength << "\n";
+  
+                vec_params.push_back(v);
+
+            }
+        } else {
+            std::cerr << "No vectors array passed\n";
+            res.set_header("Access-Control-Allow-Origin", req.get_header_value("Origin"));
+            res_error(res, format_error_response("No vectors array passed. If you want reset to 0, send an empty array.", ERROR_TYPE_SERVER));
+            return;
+        }
+
+        const auto cvec = llama_control_vector_load(vec_params);
+
+        if (cvec.n_embd == -1) {
+            std::cerr << "Could not load control vector\n";
+            res.set_header("Access-Control-Allow-Origin", req.get_header_value("Origin"));
+            res_error(res, format_error_response("Could not load control vector", ERROR_TYPE_SERVER));
+            return;
+        }
+
+        if (ctx_server.params.control_vector_layer_start <= 0) {
+            ctx_server.params.control_vector_layer_start = 1;
+        }
+        if (ctx_server.params.control_vector_layer_end   <= 0){
+            ctx_server.params.control_vector_layer_end   = llama_n_layer(ctx_server.model);
+        }
+
+
+
+
+        int err = llama_control_vector_apply(ctx_server.ctx,
+                                             cvec.data.data(),
+                                             cvec.data.size(),
+                                             cvec.n_embd,
+                                             ctx_server.params.control_vector_layer_start,
+                                             ctx_server.params.control_vector_layer_end);
+        if (err) {
+            std::cerr << "Could not apply control vector\n";
+            res.set_header("Access-Control-Allow-Origin", req.get_header_value("Origin"));
+            res_error(res, format_error_response("Could not apply control vector", ERROR_TYPE_SERVER));
+            return;
+        }
+
+        ctx_server.params.control_vectors.clear();
+
+        for (auto v : vec_params) {
+          std::cout << "set vector param: " << v.fname << " " << v.strength << "\n";
+          ctx_server.params.control_vectors.push_back(v);
+        }
+
+       handle_cv_list(req, res);
+    };
+
+    const auto handle_cv_files=[&](const httplib::Request &, httplib::Response & res) {
+        json result=json::array();
+        for (auto p:ctx_server.params.control_vector_directories){
+            auto ggufs=getGGUFFilenames(p);
+            result.push_back({
+                {"path",p},
+                {"vectors:",ggufs}
+            });
+        }
+       
+        res_ok(res, result);
+        res.status = 200; // HTTP OK
+    };   
 
     const auto handle_lora_adapters_list = [&](const httplib::Request &, httplib::Response & res) {
         json result = json::array();
@@ -3098,6 +3188,9 @@ int main(int argc, char ** argv) {
     // Save & load slots
     svr->Get ("/slots",               handle_slots);
     svr->Post("/slots/:id_slot",      handle_slots_action);
+    svr->Get("/cv",                   handle_cv_list);  
+    svr->Post("/cv",                  handle_cv_list_apply);
+    svr->Get("/cv-files",             handle_cv_files);
 
     //
     // Start the server

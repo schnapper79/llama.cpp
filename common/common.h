@@ -211,6 +211,7 @@ struct gpt_params {
     std::vector<llama_lora_adapter_info> lora_adapters; // lora adapter path with user defined scale
 
     std::vector<llama_control_vector_load_info> control_vectors; // control vector with user defined scale
+    std::vector<std::string> control_vector_directories; // directories that contain control vector files for the server to look for.
 
     int32_t verbosity                  = 0;
     int32_t control_vector_layer_start = -1; // layer range for control vector
